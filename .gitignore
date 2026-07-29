@@ -1,0 +1,33 @@
+/vendor/
+
+# A library does not commit its lock file. The lock of a dependency is never read by
+# Composer, so committing one here would only pin *our* CI to a single dependency
+# resolution — precisely the thing the `lowest`/`highest` test matrix exists to explore.
+/composer.lock
+
+# Local overrides of the committed .dist configuration.
+/phpunit.xml
+/phpstan.neon
+/.php-cs-fixer.php
+
+# Tool caches
+/.phpunit.cache/
+/.php-cs-fixer.cache
+/.phpstan.cache/
+/.phpunit.result.cache
+
+# Build artefacts
+/build/
+/coverage/
+/.coverage/
+clover.xml
+junit.xml
+
+# Editors and operating systems
+/.idea/
+/.vscode/
+/.fleet/
+.DS_Store
+Thumbs.db
+*.swp
+*~

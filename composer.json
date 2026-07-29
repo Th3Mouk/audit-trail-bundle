@@ -1,0 +1,77 @@
+{
+    "name": "th3mouk/audit-trail-bundle",
+    "description": "Doctrine audit trail for Symfony — who changed what, and when. Field-level before/after diffs, label snapshots that survive deletion, per-aggregate inline history, and pluggable actors.",
+    "type": "symfony-bundle",
+    "keywords": ["audit", "audit-trail", "audit-log", "doctrine", "symfony", "history", "changelog", "compliance", "api-platform", "gedmo"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Jérémy Marodon"
+        }
+    ],
+    "require": {
+        "php": ">=8.4",
+        "doctrine/dbal": "^4.0",
+        "doctrine/doctrine-bundle": "^2.13",
+        "doctrine/orm": "^3.2",
+        "doctrine/persistence": "^3.1 || ^4.0",
+        "psr/log": "^3.0",
+        "symfony/doctrine-bridge": "^7.4 || ^8.0",
+        "symfony/config": "^7.4 || ^8.0",
+        "symfony/dependency-injection": "^7.4 || ^8.0",
+        "symfony/http-kernel": "^7.4 || ^8.0",
+        "symfony/uid": "^7.4 || ^8.0"
+    },
+    "require-dev": {
+        "api-platform/core": "^4.1",
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "gedmo/doctrine-extensions": "^3.16",
+        "phpstan/phpstan": "^2.1",
+        "phpstan/phpstan-doctrine": "^2.0",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpstan/phpstan-symfony": "^2.0",
+        "phpunit/phpunit": "^13.0",
+        "rector/rector": "^2.0",
+        "symfony/expression-language": "^7.4 || ^8.0",
+        "symfony/framework-bundle": "^7.4 || ^8.0",
+        "symfony/security-bundle": "^7.4 || ^8.0",
+        "symfony/yaml": "^7.4 || ^8.0"
+    },
+    "suggest": {
+        "api-platform/core": "Enables the API Platform bridge: a read-only, keyset-paginated audit feed with filters.",
+        "gedmo/doctrine-extensions": "Enables the Gedmo bridge: Translatable change auditing and SoftDeleteable delete mapping.",
+        "symfony/security-bundle": "Enables the default actor resolver, which reads the authenticated user from the security token."
+    },
+    "autoload": {
+        "psr-4": {
+            "Th3Mouk\\AuditTrail\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Th3Mouk\\AuditTrail\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.x-dev"
+        }
+    },
+    "scripts": {
+        "cs:check": "php-cs-fixer fix --dry-run --diff",
+        "cs:fix": "php-cs-fixer fix",
+        "rector": "rector process --dry-run",
+        "rector:fix": "rector process",
+        "stan": "phpstan analyse --memory-limit=1G",
+        "test": ["@test:unit", "@test:integration", "@test:bridge"],
+        "test:unit": "phpunit --testsuite=unit",
+        "test:integration": "phpunit --testsuite=integration",
+        "test:bridge": "phpunit --testsuite=bridge",
+        "ci": ["@cs:check", "@stan", "@test"]
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

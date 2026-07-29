@@ -1,0 +1,40 @@
+includes:
+    # Doctrine: entity/column/relation mapping checks plus the EntityNotFinal rules,
+    # which matter here because AuditLog is a real mapped entity.
+    - vendor/phpstan/phpstan-doctrine/extension.neon
+    - vendor/phpstan/phpstan-doctrine/rules.neon
+    # PHPUnit: mock return types and assertion sanity across the three suites.
+    - vendor/phpstan/phpstan-phpunit/extension.neon
+    - vendor/phpstan/phpstan-phpunit/rules.neon
+    # Symfony: type extensions only. The companion rules.neon needs a compiled container
+    # (containerXmlPath) to say anything useful, and a bundle ships no application container.
+    - vendor/phpstan/phpstan-symfony/extension.neon
+
+parameters:
+    level: 8
+
+    paths:
+        - src
+        - tests
+
+    # A library cannot trust its own annotations: callers pass whatever they like, so a
+    # docblock claiming `array<string, mixed>` must not silence a runtime type check.
+    treatPhpDocTypesAsCertain: false
+
+    reportUnmatchedIgnoredErrors: true
+    checkMissingCallableSignature: true
+
+    ignoreErrors:
+        # The repository's feed builders are executed through a single test helper that takes
+        # the builder as a parameter — the one shape reportDynamicQueryBuilders cannot trace
+        # back to createQueryBuilder(). Scoped here so the check stays on everywhere else.
+        -
+            identifier: doctrine.queryBuilderDynamic
+            path: tests/Integration/IntegrationTestCase.php
+
+    doctrine:
+        # No objectManagerLoader on purpose: a bundle has no application kernel to boot,
+        # so column types are checked from the mapping attributes alone.
+        objectManagerLoader: null
+        reportDynamicQueryBuilders: true
+        allowNullablePropertyForRequiredField: false

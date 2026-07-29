@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         cacheDirectory=".phpunit.cache"
+         colors="true"
+         columns="max"
+         executionOrder="depends,defects"
+         beStrictAboutOutputDuringTests="true"
+         failOnRisky="true"
+         failOnWarning="true"
+         failOnNotice="true"
+         failOnDeprecation="true"
+         failOnPhpunitDeprecation="true"
+         failOnEmptyTestSuite="true"
+         displayDetailsOnTestsThatTriggerDeprecations="true"
+         displayDetailsOnPhpunitDeprecations="true"
+         displayDetailsOnTestsThatTriggerErrors="true"
+         displayDetailsOnTestsThatTriggerNotices="true"
+         displayDetailsOnTestsThatTriggerWarnings="true"
+         displayDetailsOnSkippedTests="true"
+         displayDetailsOnIncompleteTests="true">
+
+    <!--
+        The pyramid, expressed as suites:
+          unit         no container, no database — capture semantics, metadata, models
+          integration  a booted kernel and a real EntityManager — the onFlush contract
+          bridge       the optional integrations (API Platform, Gedmo), each skipped
+                       when its optional dependency is absent
+    -->
+    <testsuites>
+        <testsuite name="unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+
+        <testsuite name="integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+
+        <testsuite name="bridge">
+            <directory>tests/Bridge</directory>
+        </testsuite>
+    </testsuites>
+
+    <!--
+        restrictNotices/restrictWarnings keep the build honest without making it hostage to
+        vendor churn: an issue only fails the run when it originates in src/.
+    -->
+    <source restrictNotices="true"
+            restrictWarnings="true"
+            ignoreIndirectDeprecations="true">
+        <include>
+            <directory>src</directory>
+        </include>
+    </source>
+
+    <coverage ignoreDeprecatedCodeUnits="true"/>
+
+    <php>
+        <ini name="error_reporting" value="-1"/>
+        <ini name="memory_limit" value="-1"/>
+
+        <!--
+            No `force` attribute anywhere below: a value already present in the environment
+            wins. That is what lets the Postgres CI job (and you, locally) run the exact same
+            suites against a real server simply by exporting DATABASE_URL, for example:
+
+              DATABASE_URL="postgresql://audit:audit@127.0.0.1:5432/audit_trail?serverVersion=17"
+
+            The default is an in-memory SQLite database so `composer test` works on a fresh
+            clone with zero setup.
+        -->
+        <env name="DATABASE_URL" value="pdo-sqlite:///:memory:"/>
+        <env name="APP_ENV" value="test"/>
+        <env name="APP_DEBUG" value="1"/>
+        <env name="SHELL_VERBOSITY" value="-1"/>
+    </php>
+</phpunit>

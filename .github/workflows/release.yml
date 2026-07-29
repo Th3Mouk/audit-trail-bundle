@@ -1,0 +1,126 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# No COMPOSER_ROOT_VERSION here on purpose: the checkout is on a tag, so Composer reads the
+# real version from git. Forcing 1.x-dev would make the gate resolve a version the release
+# is not.
+
+jobs:
+  # ---------------------------------------------------------------------------------------
+  # A tag is a promise. Re-run the gate against the tagged tree rather than trusting that
+  # the branch was green when it was tagged.
+  # ---------------------------------------------------------------------------------------
+  gate:
+    name: "Gate · PHP ${{ matrix.php }} · Symfony ${{ matrix.symfony }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+        symfony: ['7.4.*', '8.1.*']
+
+    env:
+      SYMFONY_REQUIRE: ${{ matrix.symfony }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_sqlite, mbstring, intl
+          coverage: none
+          ini-values: memory_limit=-1, error_reporting=-1
+          tools: composer:v2
+
+      - name: Allow Symfony version pinning through Flex
+        run: |
+          composer global config --no-plugins allow-plugins.symfony/flex true
+          composer global require --no-progress --no-scripts --no-plugins symfony/flex
+
+      - name: Resolve Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ matrix.php }}-sf${{ matrix.symfony }}-release-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-php${{ matrix.php }}-
+
+      - name: Install dependencies
+        run: composer update --no-interaction --no-progress --prefer-stable
+
+      # --no-check-lock because a library does not commit one. --strict makes every warning
+      # (missing description, invalid licence, unbound constraint) fatal, which is the point:
+      # a broken composer.json only surfaces once the tag is public.
+      - name: Validate composer.json
+        run: composer validate --strict --no-check-lock
+
+      - name: php-cs-fixer
+        run: vendor/bin/php-cs-fixer fix --dry-run --diff --no-interaction --show-progress=none
+
+      - name: phpstan
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+      - name: rector
+        run: vendor/bin/rector process --dry-run --no-progress-bar
+
+      - name: unit
+        run: vendor/bin/phpunit --testsuite=unit
+
+      - name: integration
+        run: vendor/bin/phpunit --testsuite=integration
+
+      - name: bridge
+        run: vendor/bin/phpunit --testsuite=bridge
+
+  # ---------------------------------------------------------------------------------------
+  # No Packagist step: Packagist is subscribed to this repository's webhook and picks the tag
+  # up on its own. Pushing from here would be a second source of truth for no benefit.
+  # ---------------------------------------------------------------------------------------
+  release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs: gate
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; nothing to do."
+            exit 0
+          fi
+
+          PRERELEASE_FLAG=""
+          case "$TAG" in
+            *-alpha*|*-beta*|*-rc*|*-dev*) PRERELEASE_FLAG="--prerelease" ;;
+          esac
+
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            --verify-tag \
+            $PRERELEASE_FLAG
