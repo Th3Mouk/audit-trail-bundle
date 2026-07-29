@@ -321,8 +321,10 @@ Start at [docs/index.md](docs/index.md), or jump straight to what you need:
 ## Contributing
 
 Bug reports, ideas and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the
-gates, where a test belongs, and the two invariants that are not negotiable. Security issues:
-[SECURITY.md](SECURITY.md).
+gates, where a test belongs, and the two invariants that are not negotiable.
+[AGENTS.md](AGENTS.md) is the orientation guide for anyone — human or agent — about to change
+something: the repository map, the four rules that settle most design questions, a recipe per kind of
+change, and the traps that have already cost time here. Security issues: [SECURITY.md](SECURITY.md).
 
 ## License
 

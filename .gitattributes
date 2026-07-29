@@ -18,6 +18,8 @@
 /phpunit.xml.dist       export-ignore
 /rector.php             export-ignore
 
+/AGENTS.md              export-ignore
 /CHANGELOG.md           export-ignore
+/CLAUDE.md              export-ignore
 /CONTRIBUTING.md        export-ignore
 /SECURITY.md            export-ignore

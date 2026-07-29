@@ -3,6 +3,10 @@
 Thanks for being here. This document covers how to run the gates, where a test belongs, and
 the two invariants that are not negotiable.
 
+If this is your first change to the bundle, read [AGENTS.md](AGENTS.md) first — it orients you in
+the codebase, gives the rules that decide most design questions, and lists the mistakes already made
+here. It is written for agents and humans alike.
+
 ## Getting set up
 
 ```bash
