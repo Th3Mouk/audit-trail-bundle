@@ -1,0 +1,25 @@
+# Normalise line endings in the repository, whatever the contributor's platform.
+* text=auto eol=lf
+
+*.php diff=php
+*.md diff=markdown
+
+# Keep `composer install --prefer-dist` archives to what an application actually needs at
+# runtime: src/, config/ and the licence. Everything below is development apparatus.
+/tests                  export-ignore
+/docs                   export-ignore
+/.github                export-ignore
+
+/.editorconfig          export-ignore
+/.gitattributes         export-ignore
+/.gitignore             export-ignore
+/.php-cs-fixer.dist.php export-ignore
+/phpstan.neon.dist      export-ignore
+/phpunit.xml.dist       export-ignore
+/rector.php             export-ignore
+
+/AGENTS.md              export-ignore
+/CHANGELOG.md           export-ignore
+/CLAUDE.md              export-ignore
+/CONTRIBUTING.md        export-ignore
+/SECURITY.md            export-ignore

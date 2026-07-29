@@ -1,0 +1,328 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+# A pull-request checkout is a detached merge commit, so Composer cannot read the root
+# package version from git and warns on every command. State it once.
+env:
+  COMPOSER_ROOT_VERSION: 1.x-dev
+
+jobs:
+  # ---------------------------------------------------------------------------------------
+  # The support promise, executed.
+  #
+  # Symfony version pinning uses symfony/flex + SYMFONY_REQUIRE rather than
+  # `composer require symfony/…:<version>`. Reasons, in order of weight:
+  #
+  #   1. This bundle depends on eight separate symfony/* packages. A `composer require` run
+  #      would have to name every one of them, and would break the day a ninth is added.
+  #      SYMFONY_REQUIRE applies the constraint to all symfony/* packages at once, including
+  #      transitive ones pulled in by Doctrine or API Platform.
+  #   2. It does not touch composer.json, so `--prefer-lowest` still resolves against the
+  #      constraints the package actually publishes.
+  #
+  # Flex is installed globally with --no-plugins/--no-scripts so it acts purely as a
+  # Composer plugin for the local install, never as a recipe applier.
+  # ---------------------------------------------------------------------------------------
+  tests:
+    name: "PHP ${{ matrix.php }} · Symfony ${{ matrix.symfony }} · ${{ matrix.dependencies }} deps"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+        symfony: ['7.4.*', '8.1.*']
+        dependencies: [lowest, highest]
+
+    env:
+      SYMFONY_REQUIRE: ${{ matrix.symfony }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_sqlite, mbstring, intl
+          coverage: none
+          ini-values: memory_limit=-1, error_reporting=-1
+          tools: composer:v2
+
+      - name: Allow Symfony version pinning through Flex
+        run: |
+          composer global config --no-plugins allow-plugins.symfony/flex true
+          composer global require --no-progress --no-scripts --no-plugins symfony/flex
+
+      - name: Resolve Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ matrix.php }}-sf${{ matrix.symfony }}-${{ matrix.dependencies }}-${{ hashFiles('composer.json') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php${{ matrix.php }}-sf${{ matrix.symfony }}-${{ matrix.dependencies }}-
+            composer-${{ runner.os }}-php${{ matrix.php }}-
+
+      - name: Install dependencies (highest)
+        if: matrix.dependencies == 'highest'
+        run: composer update --no-interaction --no-progress --prefer-stable
+
+      - name: Install dependencies (lowest)
+        if: matrix.dependencies == 'lowest'
+        run: composer update --no-interaction --no-progress --prefer-stable --prefer-lowest
+
+      - name: Report what actually got installed
+        run: composer show --direct
+
+      - name: unit
+        run: vendor/bin/phpunit --testsuite=unit
+
+      - name: integration
+        run: vendor/bin/phpunit --testsuite=integration
+
+      - name: bridge
+        run: vendor/bin/phpunit --testsuite=bridge
+
+  # ---------------------------------------------------------------------------------------
+  # SQLite is enough to prove the onFlush contract, not enough to prove the schema. Indexes,
+  # JSON columns and TIMESTAMP WITH TIME ZONE only mean something on a real server.
+  # ---------------------------------------------------------------------------------------
+  postgres:
+    name: "Postgres ${{ matrix.postgres }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['16', '17']
+
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}-alpine
+        env:
+          POSTGRES_USER: audit
+          POSTGRES_PASSWORD: audit
+          POSTGRES_DB: audit_trail
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U audit -d audit_trail"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: "postgresql://audit:audit@127.0.0.1:5432/audit_trail?serverVersion=${{ matrix.postgres }}&charset=utf8"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_pgsql, mbstring, intl
+          coverage: none
+          ini-values: memory_limit=-1, error_reporting=-1
+          tools: composer:v2
+
+      - name: Resolve Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-pgsql-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-pgsql-
+
+      - name: Install dependencies
+        run: composer update --no-interaction --no-progress --prefer-stable
+
+      - name: integration
+        run: vendor/bin/phpunit --testsuite=integration
+
+      - name: bridge
+        run: vendor/bin/phpunit --testsuite=bridge
+
+  # ---------------------------------------------------------------------------------------
+  # Pinned to the lowest supported PHP (8.4) so the tools judge the code against the version
+  # the package promises to run on, not the newest one CI happens to offer.
+  # ---------------------------------------------------------------------------------------
+  static-analysis:
+    name: Static analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, mbstring, intl
+          coverage: none
+          ini-values: memory_limit=-1, error_reporting=-1
+          tools: composer:v2
+
+      - name: Resolve Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-static-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-static-
+
+      - name: Install dependencies
+        run: composer update --no-interaction --no-progress --prefer-stable
+
+      - name: Validate composer.json
+        run: composer validate --strict --no-check-lock
+
+      - name: php-cs-fixer
+        run: vendor/bin/php-cs-fixer fix --dry-run --diff --no-interaction --show-progress=none
+
+      - name: phpstan
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+      - name: rector
+        run: vendor/bin/rector process --dry-run --no-progress-bar
+
+  # ---------------------------------------------------------------------------------------
+  # The bundle claims to work with none of its optional dependencies installed. The other
+  # jobs cannot prove that: they have api-platform, gedmo and security-bundle sitting in
+  # vendor/ as development dependencies, so "not installed" is only ever simulated by
+  # configuration. Here the packages are genuinely removed, which is the only way the claim
+  # is a fact rather than an intention.
+  #
+  # Only the unit and integration suites run — the bridge suite exists precisely to exercise
+  # what has just been uninstalled.
+  # ---------------------------------------------------------------------------------------
+  without-optional-dependencies:
+    name: Without optional dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, mbstring, intl
+          coverage: none
+          ini-values: memory_limit=-1, error_reporting=-1
+          tools: composer:v2
+
+      - name: Resolve Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-minimal-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-minimal-
+
+      - name: Drop every optional dependency
+        run: |
+          composer remove --dev --no-update --no-interaction \
+            api-platform/core \
+            gedmo/doctrine-extensions \
+            symfony/security-bundle \
+            symfony/expression-language
+
+      - name: Install what is left
+        run: composer update --no-interaction --no-progress --prefer-stable
+
+      - name: Prove they are gone
+        run: |
+          for package in api-platform/core gedmo/doctrine-extensions symfony/security-bundle; do
+            if composer show "$package" >/dev/null 2>&1; then
+              echo "::error::$package is still installed — this job proves nothing"
+              exit 1
+            fi
+          done
+
+      - name: unit
+        run: vendor/bin/phpunit --testsuite=unit
+
+      - name: integration
+        run: vendor/bin/phpunit --testsuite=integration
+
+  # ---------------------------------------------------------------------------------------
+  # Coverage is measured on every run so a pull request always shows its own numbers in the
+  # log. The upload is conditional on a token being available, which it is not for pull
+  # requests from forks — the job must inform, never block.
+  # ---------------------------------------------------------------------------------------
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, mbstring, intl
+          coverage: pcov
+          ini-values: memory_limit=-1, error_reporting=-1
+          tools: composer:v2
+
+      - name: Resolve Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-coverage-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-coverage-
+
+      - name: Install dependencies
+        run: composer update --no-interaction --no-progress --prefer-stable
+
+      - name: Run every suite with coverage
+        run: |
+          vendor/bin/phpunit \
+            --coverage-clover=build/coverage/clover.xml \
+            --coverage-text \
+            --log-junit=build/coverage/junit.xml
+
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: build/coverage/clover.xml
+          fail_ci_if_error: false
+
+      - name: Upload coverage as an artefact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: build/coverage/
+          retention-days: 7
+          if-no-files-found: ignore

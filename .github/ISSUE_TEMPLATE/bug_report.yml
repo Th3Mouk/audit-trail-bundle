@@ -1,0 +1,63 @@
+name: Bug report
+description: Something the bundle does that it should not, or does not do that it should.
+labels: [bug]
+
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected the trail to contain, and what it contained instead.
+      placeholder: |
+        Updating only a #[AuditMasked] property produced no audit entry. I expected one
+        entry with masked before/after values.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: >
+        The shortest path to the behaviour. A failing test against `tests/` beats prose;
+        an entity sketch with its audit attributes plus the code that flushes it is the
+        next best thing.
+      render: php
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Bundle, PHP, Symfony, Doctrine ORM, and your database server.
+      placeholder: "bundle 1.0.2 · PHP 8.4.3 · Symfony 7.4.5 · ORM 3.6.1 · PostgreSQL 17"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: bridges
+    attributes:
+      label: Optional dependencies installed
+      description: The bundle boots without any of these; knowing which are present narrows it down fast.
+      options:
+        - label: api-platform/core
+        - label: gedmo/doctrine-extensions
+        - label: symfony/security-bundle
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Your `audit_trail` configuration
+      description: >
+        The non-default parts. `listener_priority` in particular decides whether the bundle
+        sees a change set before or after another listener has rewritten it.
+      render: yaml
+
+  - type: textarea
+    id: extension-points
+    attributes:
+      label: Anything you replaced or decorated
+      description: >
+        Custom `ActorResolverInterface`, `CaptureGateInterface`, `ValueSerializerInterface`,
+        `AuditStorageInterface`, or a decorated default.

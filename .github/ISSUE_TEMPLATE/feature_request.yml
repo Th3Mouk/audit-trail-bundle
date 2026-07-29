@@ -1,0 +1,49 @@
+name: Feature request
+description: Something the bundle should be able to express and currently cannot.
+labels: [enhancement]
+
+body:
+  - type: markdown
+    attributes:
+      value: >
+        This bundle stays generic on purpose: it knows nothing about your User class, your
+        permission names, or your entities. The strongest proposals are new **extension
+        points**, or defaults that any application can replace.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to record, and where the current API stops you.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you tried
+      description: >
+        Which seam you reached for first — a tagged `ValueSerializerInterface`, a
+        `CaptureGateInterface`, an `AuditStorageInterface` decorator, `AuditLoggerInterface`
+        called by hand — and why it was not enough.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: >
+        The shape you have in mind. Sketch the interface or the configuration key. State
+        plainly if it needs a new dependency, and whether the bundle must keep booting
+        without it.
+      render: php
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints it respects
+      options:
+        - label: It assumes nothing about the host application's classes or vocabulary.
+        - label: Any new dependency is optional and guarded.
+        - label: It performs no database query during `onFlush`.
