@@ -6,7 +6,6 @@ namespace Th3Mouk\AuditTrail\Tests\Case;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
-use Symfony\Component\ErrorHandler\ErrorHandler;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
@@ -36,6 +35,7 @@ abstract class AuditTrailKernelTestCase extends KernelTestCase
 {
     use AuditEntryAssertions;
     use AuditEntryBuilders;
+    use RestoresFrameworkErrorHandlers;
 
     /**
      * @return class-string<KernelInterface>
@@ -88,30 +88,11 @@ abstract class AuditTrailKernelTestCase extends KernelTestCase
         SchemaBuilder::recreate($this->em());
     }
 
-    /**
-     * Takes the kernel's error handlers back off the stack it put them on.
-     *
-     * Booting a Symfony kernel installs `ErrorHandler` — `FrameworkBundle::boot()` registers it
-     * whenever symfony/runtime is not there to have done it already — and shutting the kernel
-     * down does not take it off again. PHPUnit notices the handler that outlived the test and
-     * reports a risky test, which `failOnRisky` turns into a failed build.
-     *
-     * Only the handlers the kernel put there are popped, and only while they are still on top:
-     * restoring blindly, or a fixed number of times, would take PHPUnit's own handler with them,
-     * which it reports just as loudly. That also makes the unwinding indifferent to how many
-     * kernels a test booted.
-     */
     protected function tearDown(): void
     {
         parent::tearDown();
 
-        while (self::isFrameworkErrorHandler(self::peekErrorHandler())) {
-            restore_error_handler();
-        }
-
-        while (self::isFrameworkErrorHandler(self::peekExceptionHandler())) {
-            restore_exception_handler();
-        }
+        $this->restoreFrameworkErrorHandlers();
     }
 
     /**
@@ -252,30 +233,5 @@ abstract class AuditTrailKernelTestCase extends KernelTestCase
         \assert($kernel instanceof HttpKernelInterface);
 
         return $kernel->handle($request, HttpKernelInterface::MAIN_REQUEST, true);
-    }
-
-    /**
-     * Reads the handler on top of the stack without adding one: `set_*_handler()` returns the
-     * previous handler, and the matching `restore_*_handler()` undoes the push it just made.
-     */
-    private static function peekErrorHandler(): mixed
-    {
-        $handler = set_error_handler(null);
-        restore_error_handler();
-
-        return $handler;
-    }
-
-    private static function peekExceptionHandler(): mixed
-    {
-        $handler = set_exception_handler(null);
-        restore_exception_handler();
-
-        return $handler;
-    }
-
-    private static function isFrameworkErrorHandler(mixed $handler): bool
-    {
-        return \is_array($handler) && ($handler[0] ?? null) instanceof ErrorHandler;
     }
 }

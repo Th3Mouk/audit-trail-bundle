@@ -11,6 +11,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpKernel\CacheWarmer\CacheWarmerAggregate;
 use Symfony\Component\HttpKernel\KernelInterface;
 use Th3Mouk\AuditTrail\Metadata\AuditTypeWarmer;
+use Th3Mouk\AuditTrail\Tests\Case\RestoresFrameworkErrorHandlers;
 use Th3Mouk\AuditTrail\Tests\Fixtures\Kernel\DoctrineOnlyKernel;
 
 /**
@@ -38,6 +39,8 @@ use Th3Mouk\AuditTrail\Tests\Fixtures\Kernel\DoctrineOnlyKernel;
 #[CoversClass(AuditTypeWarmer::class)]
 final class CacheWarmerOrderingTest extends KernelTestCase
 {
+    use RestoresFrameworkErrorHandlers;
+
     private const string ENVIRONMENT = 'cache_warmer_ordering';
 
     #[\Override]
@@ -67,6 +70,17 @@ final class CacheWarmerOrderingTest extends KernelTestCase
         parent::setUp();
 
         self::removeDirectory(new DoctrineOnlyKernel(self::ENVIRONMENT, false)->getCacheDir());
+    }
+
+    /**
+     * `KernelTestCase::tearDown()` shuts the kernel down but does not restore the error and
+     * exception handlers it installed while booting; see `RestoresFrameworkErrorHandlers`.
+     */
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+
+        $this->restoreFrameworkErrorHandlers();
     }
 
     private static function removeDirectory(string $directory): void
