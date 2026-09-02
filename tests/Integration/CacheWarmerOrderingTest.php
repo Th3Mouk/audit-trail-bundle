@@ -35,6 +35,13 @@ use Th3Mouk\AuditTrail\Tests\Fixtures\Kernel\DoctrineOnlyKernel;
  * runs breaks it, which is what makes a `kernel.cache_warmer` priority on `AuditTypeWarmer` useless
  * — the two never run within the same priority-ordered pass for such a priority to order. The
  * second is the actual regression: `AuditTypeWarmer`, wired for real, must not be that "anything".
+ *
+ * Both skip on `doctrine/doctrine-bundle` `^2.13`, the bundle's own lowest supported floor: that
+ * line's `DoctrineMetadataCacheWarmer::isOptional()` returns `false` — its own docblock says so,
+ * "it must not be optional because it should be called before ProxyCacheWarmer which is not
+ * optional" — so it runs in the *same*, single, non-optional-only pass as `AuditTypeWarmer`, where
+ * its priority of 1000 correctly puts it first. The two-pass split, and so this whole hazard, is
+ * specific to the `^3.0` line.
  */
 #[CoversClass(AuditTypeWarmer::class)]
 final class CacheWarmerOrderingTest extends KernelTestCase
@@ -166,10 +173,12 @@ final class CacheWarmerOrderingTest extends KernelTestCase
 
         $doctrineWarmer = $container->get('doctrine.orm.default_metadata_cache_warmer');
         self::assertInstanceOf(DoctrineMetadataCacheWarmer::class, $doctrineWarmer);
-        self::assertTrue(
-            $doctrineWarmer->isOptional(),
-            'The whole hazard depends on DoctrineBundle declaring its warmer optional; a change there would make this test meaningless rather than failing it.',
-        );
+
+        if (!$doctrineWarmer->isOptional()) {
+            self::markTestSkipped(
+                'This installed DoctrineBundle declares its own metadata warmer non-optional (the ^2.13 line): it therefore runs in the same, single, non-optional-only pass as AuditTypeWarmer, where priority 1000 already puts it first. The two-pass hazard this test exists for is specific to the ^3.0 line.',
+            );
+        }
 
         $aggregate = $container->get('cache_warmer');
         self::assertInstanceOf(CacheWarmerAggregate::class, $aggregate);
