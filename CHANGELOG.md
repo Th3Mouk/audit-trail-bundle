@@ -143,6 +143,20 @@ configuration schema, the service tags, the public service aliases, and the shap
   `bridges.*` sections. Every option is read by something; `config:dump-reference audit_trail`
   is the whole surface.
 
+### Fixed
+
+- `SecurityTokenActorResolver` is now actually registered when `symfony/security-bundle` is
+  installed. `AuditTrailExtension::load()` decided this with
+  `ContainerBuilder::hasExtension('security')`, which is unconditionally `false` from inside an
+  extension's own `load()` — Symfony compiles every extension's configuration against an
+  isolated, throwaway container (`MergeExtensionConfigurationPass`), so the check failed in every
+  application, regardless of bundle order. The decision now happens in
+  `RegisterSecurityActorResolverPass`, a compiler pass that runs against the real, fully-merged
+  container, the same way `RegisterAuditFeedPass` already decides for the API Platform bridge.
+  The single-argument `$container->register(SecurityTokenActorResolver::class)` this replaces
+  also left the definition's class attribute unset, which would have failed the build outright
+  the moment the guard above stopped hiding it.
+
 ### Security
 
 - The trail is soft append-only by default. Making it hard append-only is an infrastructure

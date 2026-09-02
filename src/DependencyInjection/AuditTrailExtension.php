@@ -15,8 +15,6 @@ use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
-use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
-use Th3Mouk\AuditTrail\Actor\SecurityTokenActorResolver;
 use Th3Mouk\AuditTrail\Bridge\Gedmo\SoftDeleteableActionResolver;
 use Th3Mouk\AuditTrail\Bridge\Gedmo\TranslationAuditListener;
 use Th3Mouk\AuditTrail\Bridge\Gedmo\TranslationFieldExclusion;
@@ -93,7 +91,6 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         $loader->load('services.php');
 
         $this->applyListenerPriority($container, $config['listener_priority']);
-        $this->registerSecurityActorResolver($container);
 
         if ($gedmoEnabled) {
             $loader->load('bridge_gedmo.php');
@@ -105,8 +102,11 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         // silently keep the default manager — the exact bug this method exists to prevent.
         $this->bindAuditedEntityManager($container, $entityManagerName);
 
-        // The API Platform feed is assembled by RegisterAuditFeedPass, which inspects the
-        // compiled container to decide whether the bridge applies. Nothing to load here.
+        // Two things are deliberately absent from this method: the API Platform feed and the
+        // default security actor resolver. Both are assembled by a compiler pass —
+        // RegisterAuditFeedPass and RegisterSecurityActorResolverPass, registered from
+        // AuditTrailBundle::build() — because both decisions need the real, fully-merged
+        // container to answer honestly, which load() never receives.
     }
 
     /**
@@ -218,17 +218,6 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         }
 
         return $expression;
-    }
-
-    private function registerSecurityActorResolver(ContainerBuilder $container): void
-    {
-        if (!interface_exists(TokenStorageInterface::class) || !$container->hasExtension('security')) {
-            return;
-        }
-
-        $container->register(SecurityTokenActorResolver::class)
-            ->setArguments([new Reference('security.token_storage')])
-            ->addTag('audit_trail.actor_resolver', ['priority' => -100]);
     }
 
     /**
