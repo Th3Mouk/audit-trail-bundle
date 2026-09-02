@@ -155,12 +155,21 @@ whether it applies:
 | --- | --- | --- |
 | Gedmo | `bridge_gedmo.php`, loaded from `AuditTrailExtension` | `bridges.gedmo.enabled`, defaulting to `class_exists(TranslatableListener::class)`; each half then kept or removed by `bridges.gedmo.translatable` / `.soft_deleteable` |
 | API Platform | `RegisterAuditFeedPass`, a compiler pass installed from `AuditTrailBundle::build()` | api-platform installed *and* registered *and* with Doctrine ORM support, plus `bridges.api_platform.enabled` not `false` |
-| security actor resolver | registered inline by `AuditTrailExtension` | `TokenStorageInterface` exists *and* a `security` extension is present |
+| security actor resolver | `RegisterSecurityActorResolverPass`, a compiler pass installed from `AuditTrailBundle::build()` | `TokenStorageInterface` exists *and* `security.token_storage` is a real service in the compiled container |
 
 There is no service file for the API Platform bridge: everything it needs is read from container
 parameters by the pass, which also lets the pass run before API Platform's own `FilterPass` — a
 constraint bundle registration order cannot express. `AuditLog` carries no API Platform attribute
 either; the class only becomes a resource while the pass's decorators are registered.
+
+The security actor resolver needs a compiler pass for a narrower reason, but the same root cause:
+`AuditTrailExtension::load()` cannot honestly ask whether `symfony/security-bundle` is registered.
+Symfony compiles every extension's configuration through `MergeExtensionConfigurationPass`, which
+calls each extension's `load()` against an isolated, throwaway container that never has any other
+bundle's extension on it — `ContainerBuilder::hasExtension('security')`, asked from `load()`, is
+unconditionally `false`, whichever bundle asks and in whatever order bundles were registered. A
+compiler pass runs later, against the real container, once every extension has been merged into
+it, which is the first point this question can be answered honestly.
 
 ## Reading the code
 
