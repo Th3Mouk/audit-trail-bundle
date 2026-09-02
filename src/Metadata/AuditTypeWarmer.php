@@ -28,6 +28,25 @@ use Th3Mouk\AuditTrail\Exception\InvalidAuditType;
  * Doctrine's entities: there is no entity manager to ask while the container is still being built. A
  * warmer has one, and `cache:warmup` is the step a deployment already runs — so the check lands where
  * a build failure belongs, and never in the middle of a request.
+ *
+ * It asks the mapping driver for class names — `getAllClassNames()` — rather than asking the
+ * metadata factory for `ClassMetadata` — `getAllMetadata()` — and that is not an optimisation, it is
+ * what keeps this warmer from breaking DoctrineBundle's own one. DoctrineBundle registers its
+ * `DoctrineMetadataCacheWarmer` at `kernel.cache_warmer` priority 1000 whenever `kernel.debug` is
+ * false, and that warmer throws if the metadata factory has already loaded anything by the time it
+ * runs, because it means to be the one populating the cache it then persists to disk. No priority on
+ * this warmer's own tag can protect against that: the first warm-up pass a freshly compiled container
+ * runs, as a side effect of `Kernel::initializeContainer()`, includes only warmers that are not
+ * optional; `cache:warmup` and `cache:clear` each then run a *second*, separate pass that adds the
+ * optional ones in, DoctrineBundle's included. Priority only orders warmers against one another within
+ * a single one of those passes — it cannot move a non-optional warmer into the later one. Being
+ * non-optional therefore guarantees this warmer always runs in the first pass, before DoctrineBundle's
+ * ever gets a turn, so calling `getAllMetadata()` here would load metadata on DoctrineBundle's behalf
+ * every time, regardless of what number is written on this tag. The driver's class list is the same
+ * one `AbstractClassMetadataFactory::getAllMetadata()` reads before loading anything, so asking for it
+ * directly answers the one question this warmer has — is a type claimed twice — without loading a
+ * single `ClassMetadata`, leaving the factory exactly as untouched for DoctrineBundle's warmer as if
+ * this one did not exist.
  */
 final readonly class AuditTypeWarmer implements CacheWarmerInterface
 {
@@ -54,9 +73,9 @@ final readonly class AuditTypeWarmer implements CacheWarmerInterface
         /** @var array<string, array{type: string, classes: list<class-string>}> $claims */
         $claims = [];
 
-        foreach ($this->entityManager->getMetadataFactory()->getAllMetadata() as $metadata) {
-            $class = $metadata->getName();
+        $driver = $this->entityManager->getConfiguration()->getMetadataDriverImpl();
 
+        foreach ($driver?->getAllClassNames() ?? [] as $class) {
             if (!$this->auditableResolver->isEnabledFor($class)) {
                 continue;
             }
