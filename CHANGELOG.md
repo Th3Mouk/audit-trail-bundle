@@ -11,6 +11,31 @@ configuration schema, the service tags, the public service aliases, and the shap
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-02
+
+### Fixed
+
+- `SecurityTokenActorResolver` is now actually registered when `symfony/security-bundle` is
+  installed. `AuditTrailExtension::load()` decided this with
+  `ContainerBuilder::hasExtension('security')`, which is unconditionally `false` from inside an
+  extension's own `load()` — Symfony compiles every extension's configuration against an
+  isolated, throwaway container (`MergeExtensionConfigurationPass`), so the check failed in every
+  application, regardless of bundle order. The decision now happens in
+  `RegisterSecurityActorResolverPass`, a compiler pass that runs against the real, fully-merged
+  container, the same way `RegisterAuditFeedPass` already decides for the API Platform bridge.
+  The single-argument `$container->register(SecurityTokenActorResolver::class)` this replaces
+  also left the definition's class attribute unset, which would have failed the build outright
+  the moment the guard above stopped hiding it.
+- `cache:warmup` and `cache:clear` no longer fail with `LogicException: DoctrineMetadataCacheWarmer
+  must load metadata first` in any application where DoctrineBundle installs that warmer. The type
+  warmer now reads the mapping driver's class list instead of asking Doctrine's metadata factory to
+  compute full `ClassMetadata`, so it no longer touches the metadata factory `DoctrineMetadataCacheWarmer`
+  requires untouched the first time it runs. No priority on either warmer's `kernel.cache_warmer` tag
+  could have fixed this: DoctrineBundle's warmer is optional and the type warmer is not, so the two run
+  in separate warm-up passes and never compete on priority at all.
+
+## [0.1.0] - 2026-08-12
+
 ### Added
 
 #### Capture
@@ -40,17 +65,6 @@ configuration schema, the service tags, the public service aliases, and the shap
   manager.
 - The type warmer also refuses an empty type or one longer than the 64-character column, so neither
   reaches the database as a failed insert.
-- The type warmer reads the mapping driver's class list instead of asking Doctrine's metadata
-  factory to compute full `ClassMetadata`, so it no longer collides with DoctrineBundle's own
-  `DoctrineMetadataCacheWarmer` — which requires an untouched metadata factory the first time it
-  runs, and only exists once `kernel.debug` is false. Without this, `cache:warmup` and
-  `cache:clear` failed with `LogicException: DoctrineMetadataCacheWarmer must load metadata
-  first` in any application where DoctrineBundle installs that warmer, regardless of the
-  priority on either warmer's `kernel.cache_warmer` tag.
-- The API Platform bridge requires `api-platform/core` >= 4.3.9 and says so at container build time
-  (`UnsupportedApiPlatformVersion`). Below it, a date cursor was cast to a string while building
-  `hydra:next`, so every paginated response failed; the floor is enforced only when the feed is
-  enabled, so applications that never expose it are unaffected.
 - Capture hooks Doctrine's `onFlush` and nothing else. Entries are read from
   `UnitOfWork::getEntityChangeSet()`, and no database query is issued while the flush is in
   flight.
@@ -121,7 +135,11 @@ configuration schema, the service tags, the public service aliases, and the shap
 
 - API Platform: an opt-in read-only audit feed with a configurable route prefix, pagination
   limits, and an application-supplied security expression. Auto-detected, and no security
-  attribute is emitted unless you provide one.
+  attribute is emitted unless you provide one. Requires `api-platform/core` >= 4.3.9 and says
+  so at container build time (`UnsupportedApiPlatformVersion`). Below it, a date cursor was
+  cast to a string while building `hydra:next`, so every paginated response failed; the floor
+  is enforced only when the feed is enabled, so applications that never expose it are
+  unaffected.
 - Gedmo: Translatable-aware change capture and SoftDeleteable-aware delete mapping,
   auto-detected, each half switchable on its own through `bridges.gedmo.translatable` and
   `bridges.gedmo.soft_deleteable`. Both reach capture through the generic
@@ -143,23 +161,11 @@ configuration schema, the service tags, the public service aliases, and the shap
   `bridges.*` sections. Every option is read by something; `config:dump-reference audit_trail`
   is the whole surface.
 
-### Fixed
-
-- `SecurityTokenActorResolver` is now actually registered when `symfony/security-bundle` is
-  installed. `AuditTrailExtension::load()` decided this with
-  `ContainerBuilder::hasExtension('security')`, which is unconditionally `false` from inside an
-  extension's own `load()` — Symfony compiles every extension's configuration against an
-  isolated, throwaway container (`MergeExtensionConfigurationPass`), so the check failed in every
-  application, regardless of bundle order. The decision now happens in
-  `RegisterSecurityActorResolverPass`, a compiler pass that runs against the real, fully-merged
-  container, the same way `RegisterAuditFeedPass` already decides for the API Platform bridge.
-  The single-argument `$container->register(SecurityTokenActorResolver::class)` this replaces
-  also left the definition's class attribute unset, which would have failed the build outright
-  the moment the guard above stopped hiding it.
-
 ### Security
 
 - The trail is soft append-only by default. Making it hard append-only is an infrastructure
   decision; see [SECURITY.md](SECURITY.md) for the `REVOKE`/`GRANT` that does it.
 
-[Unreleased]: https://github.com/th3mouk/audit-trail-bundle/commits/main
+[Unreleased]: https://github.com/th3mouk/audit-trail-bundle/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/th3mouk/audit-trail-bundle/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/th3mouk/audit-trail-bundle/releases/tag/v0.1.0
