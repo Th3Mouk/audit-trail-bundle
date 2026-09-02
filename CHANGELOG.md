@@ -40,6 +40,13 @@ configuration schema, the service tags, the public service aliases, and the shap
   manager.
 - The type warmer also refuses an empty type or one longer than the 64-character column, so neither
   reaches the database as a failed insert.
+- The type warmer reads the mapping driver's class list instead of asking Doctrine's metadata
+  factory to compute full `ClassMetadata`, so it no longer collides with DoctrineBundle's own
+  `DoctrineMetadataCacheWarmer` — which requires an untouched metadata factory the first time it
+  runs, and only exists once `kernel.debug` is false. Without this, `cache:warmup` and
+  `cache:clear` failed with `LogicException: DoctrineMetadataCacheWarmer must load metadata
+  first` in any application where DoctrineBundle installs that warmer, regardless of the
+  priority on either warmer's `kernel.cache_warmer` tag.
 - The API Platform bridge requires `api-platform/core` >= 4.3.9 and says so at container build time
   (`UnsupportedApiPlatformVersion`). Below it, a date cursor was cast to a string while building
   `hydra:next`, so every paginated response failed; the floor is enforced only when the feed is

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Th3Mouk\AuditTrail\Tests\Unit\Metadata;
 
+use Doctrine\ORM\Configuration;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Mapping\ClassMetadata;
-use Doctrine\ORM\Mapping\ClassMetadataFactory;
+use Doctrine\Persistence\Mapping\Driver\MappingDriver;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Th3Mouk\AuditTrail\Exception\DuplicateAuditType;
@@ -106,13 +106,14 @@ final class AuditTypeWarmerTest extends TestCase
      */
     private function warmerFor(string ...$classes): AuditTypeWarmer
     {
-        $metadataFactory = $this->createStub(ClassMetadataFactory::class);
-        $metadataFactory->method('getAllMetadata')->willReturn(
-            array_map(static fn (string $class): ClassMetadata => new ClassMetadata($class), $classes),
-        );
+        $driver = $this->createStub(MappingDriver::class);
+        $driver->method('getAllClassNames')->willReturn($classes);
+
+        $configuration = $this->createStub(Configuration::class);
+        $configuration->method('getMetadataDriverImpl')->willReturn($driver);
 
         $entityManager = $this->createStub(EntityManagerInterface::class);
-        $entityManager->method('getMetadataFactory')->willReturn($metadataFactory);
+        $entityManager->method('getConfiguration')->willReturn($configuration);
 
         return new AuditTypeWarmer(
             $entityManager,
