@@ -24,7 +24,7 @@
         "symfony/uid": "^7.4 || ^8.0"
     },
     "require-dev": {
-        "api-platform/core": "^4.3.9",
+        "api-platform/core": "^5.0.2",
         "friendsofphp/php-cs-fixer": "^3.64",
         "gedmo/doctrine-extensions": "^3.16",
         "phpstan/phpstan": "^2.1",
