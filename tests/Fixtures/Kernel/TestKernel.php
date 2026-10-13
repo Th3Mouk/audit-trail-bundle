@@ -198,7 +198,7 @@ abstract class TestKernel extends Kernel
         return [
             'AuditTrailFixtures' => [
                 'type' => 'attribute',
-                'dir' => \dirname(__DIR__).'/Entity',
+                'dir' => __DIR__.'/../Entity',
                 'prefix' => 'Th3Mouk\AuditTrail\Tests\Fixtures\Entity',
                 'is_bundle' => false,
             ],

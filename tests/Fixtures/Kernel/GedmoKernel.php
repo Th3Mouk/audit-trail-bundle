@@ -58,7 +58,7 @@ final class GedmoKernel extends TestKernel
             ...parent::entityMappings(),
             'AuditTrailGedmoFixtures' => [
                 'type' => 'attribute',
-                'dir' => \dirname(__DIR__).'/Gedmo/Entity',
+                'dir' => __DIR__.'/../Gedmo/Entity',
                 'prefix' => 'Th3Mouk\AuditTrail\Tests\Fixtures\Gedmo\Entity',
                 'is_bundle' => false,
             ],

@@ -67,7 +67,7 @@ class GedmoBridgeKernel extends TestKernel
             ],
             'AuditTrailGedmoBridgeFixtures' => [
                 'type' => 'attribute',
-                'dir' => \dirname(__DIR__).'/Fixture',
+                'dir' => __DIR__.'/../Fixture',
                 'prefix' => 'Th3Mouk\AuditTrail\Tests\Bridge\Gedmo\Fixture',
                 'is_bundle' => false,
             ],
