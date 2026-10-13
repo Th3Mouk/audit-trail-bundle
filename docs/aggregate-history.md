@@ -166,15 +166,16 @@ GET /audit-logs?rootType=questionnaire&rootId=0197f1c2-...&id[lt]=<last id you r
 
 Full filter list and payload shapes: [bridges/api-platform.md](bridges/api-platform.md).
 
-## One caveat about creations
+## What a creation records under a database-assigned key
 
-`onFlush` runs *before* the `INSERT`, so an entity whose key the database assigns has no identifier
-yet when its `create` entry is built. Such entries carry an empty `entity_id` — they are still in the
-right aggregate feed, with the right label and full initial state, but they cannot be found by
-identifier. Updates, deletions, and entities keyed by the application (UUID assigned in the
-constructor) are unaffected. Assigning identifiers yourself removes the case entirely; see
-[architecture.md](architecture.md#the-atomicity-guarantee).
+A creation of an entity whose key the database assigns is recorded once its `INSERT` has produced the
+key, so its `entity_id`, its aggregate root and the references in its initial state all name real rows —
+including a child created in the same flush as its parent, which is rooted at the parent's own key.
 
+The limit is on the entries recorded *before* the `INSERT`. An update or a deletion that references an
+entity still waiting for its key — a comment moved to a post created in the same flush — records no
+reference and no root for it, rather than guessing. A clone is the case that would guess wrong: it carries
+its source's key until the `INSERT`, and the entry must not read as a move to the original.
 
 For the repository's full surface — the four query builders, cursor paging, custom criteria and
 exports — see [reading-the-trail.md](reading-the-trail.md).

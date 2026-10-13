@@ -6,6 +6,7 @@ namespace Th3Mouk\AuditTrail\EventListener;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
+use Doctrine\ORM\Event\PostPersistEventArgs;
 use Doctrine\ORM\UnitOfWork;
 use Th3Mouk\AuditTrail\Actor\ActorResolverInterface;
 use Th3Mouk\AuditTrail\Capture\ActionResolverInterface;
@@ -14,6 +15,7 @@ use Th3Mouk\AuditTrail\Capture\ChangeSetSerializer;
 use Th3Mouk\AuditTrail\Capture\EntityIdResolver;
 use Th3Mouk\AuditTrail\Capture\FieldExclusionInterface;
 use Th3Mouk\AuditTrail\Capture\LabelResolverInterface;
+use Th3Mouk\AuditTrail\Capture\PendingCreations;
 use Th3Mouk\AuditTrail\Capture\ScopeResolverInterface;
 use Th3Mouk\AuditTrail\Context\RequestContext;
 use Th3Mouk\AuditTrail\Enum\AuditAction;
@@ -50,6 +52,13 @@ use Th3Mouk\AuditTrail\Storage\FlushState;
  * Collection and many-to-many deltas are out of scope: `getScheduledCollectionUpdates()`
  * is deliberately not read. Audit the owning child entity instead — a pivot row deletion
  * is a fact with an identifier, a collection diff is not.
+ *
+ * One entry cannot be built in `onFlush`: the creation of an entity whose key the database
+ * assigns. Its key does not exist before the INSERT, and neither does anything that names it — a
+ * reference to it, the root of a child created beside it. `onFlush` only decides that it is
+ * captured; `postPersist`, which still runs inside the transaction, builds the entry from the
+ * entity as inserted and has the storage write it. Nothing is updated afterwards: the trail stays
+ * insert-only, which is what lets an application revoke `UPDATE` on it.
  */
 final readonly class AuditLogListener
 {
@@ -66,6 +75,7 @@ final readonly class AuditLogListener
         private FieldExclusionInterface $fieldExclusion,
         private AuditStorageInterface $storage,
         private FlushState $flushState,
+        private PendingCreations $pendingCreations,
         private RequestContext $requestContext,
         private EntityManagerInterface $auditedEntityManager,
         private bool $enabled = true,
@@ -93,6 +103,7 @@ final readonly class AuditLogListener
         $unitOfWork = $entityManager->getUnitOfWork();
         $occurredAt = new \DateTimeImmutable();
 
+        $this->pendingCreations->discard();
         $this->flushState->enterFlush();
 
         try {
@@ -102,17 +113,45 @@ final readonly class AuditLogListener
                 ...$this->collectDeletions($entityManager, $unitOfWork, $occurredAt),
             ];
 
-            if ([] === $entries) {
+            if ([] === $entries && $this->pendingCreations->isEmpty()) {
                 return;
             }
 
             $actor = $this->actorResolver->resolve();
+            $this->pendingCreations->attributeTo($actor);
 
             foreach ($entries as $entry) {
                 $this->storage->store($entry->withActor($actor));
             }
         } finally {
             $this->flushState->leaveFlush();
+        }
+    }
+
+    /**
+     * Records the creations whose key the INSERT has just produced.
+     *
+     * Runs inside the transaction of the flush that made the change, so the entry shares its
+     * fate. The unit of work has finished inserting by now and will not look at another row, which
+     * is why the storage is told it is writing after the inserts and writes the row itself.
+     */
+    public function postPersist(PostPersistEventArgs $args): void
+    {
+        $entity = $args->getObject();
+        $creation = $this->pendingCreations->release($entity);
+
+        if (null === $creation) {
+            return;
+        }
+
+        $entry = $this->buildCreation($this->auditedEntityManager, $entity, $creation->entityClass, $creation->occurredAt);
+
+        $this->flushState->enterAfterInserts();
+
+        try {
+            $this->storage->store($entry->withActor($creation->actor));
+        } finally {
+            $this->flushState->leaveAfterInserts();
         }
     }
 
@@ -133,18 +172,36 @@ final readonly class AuditLogListener
                 continue;
             }
 
-            $entries[] = $this->buildEntry(
-                $entityClass,
-                $entity,
-                AuditAction::Create,
-                $occurredAt,
-                $this->stateOnCreate
-                    ? $this->changeSetSerializer->serializeState($entity, $this->fieldValuesOf($entityManager, $entity))
-                    : null,
-            );
+            if ($this->entityIdResolver->isPending($entity)) {
+                $this->pendingCreations->defer($entity, $entityClass, $occurredAt);
+
+                continue;
+            }
+
+            $entries[] = $this->buildCreation($entityManager, $entity, $entityClass, $occurredAt);
         }
 
         return $entries;
+    }
+
+    /**
+     * @param class-string $entityClass
+     */
+    private function buildCreation(
+        EntityManagerInterface $entityManager,
+        object $entity,
+        string $entityClass,
+        \DateTimeImmutable $occurredAt,
+    ): AuditEntry {
+        return $this->buildEntry(
+            $entityClass,
+            $entity,
+            AuditAction::Create,
+            $occurredAt,
+            $this->stateOnCreate
+                ? $this->changeSetSerializer->serializeState($entity, $this->fieldValuesOf($entityManager, $entity))
+                : null,
+        );
     }
 
     /**

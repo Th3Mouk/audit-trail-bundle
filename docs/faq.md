@@ -28,6 +28,7 @@ The parts that are not free, in rough order of importance:
 | Cost | Notes |
 | --- | --- |
 | one `INSERT` per entry | the actual cost; a flush touching 50 audited entities writes 50 rows |
+| a statement of its own per creation of a database-keyed entity | those rows are written after the entity's `INSERT`, one statement each, instead of through the unit of work's per-class batch |
 | JSON encoding of the payload | proportional to the number of changed fields |
 | four indexes to maintain | the price of the four questions the trail answers |
 | reflection | memoised; negligible after warm-up |
@@ -171,12 +172,13 @@ mask/ignore attributes stay meaningful.
 See [extending.md](extending.md#value-serializer-a-value-object) and
 [attributes.md](attributes.md#what-the-values-look-like).
 
-## Why is the `entity_id` of some `create` entries empty?
+## Why is the `entity_id` of some old `create` entries empty?
 
-Because `onFlush` runs before the `INSERT`, so an entity whose key the database generates has no
-identifier yet — and the entry is built at that moment precisely so it shares the transaction. Assign
-identifiers in the constructor (UUID v7) and it goes away. Full explanation:
-[architecture.md](architecture.md#the-atomicity-guarantee).
+Entries recorded by `0.1.x` for an entity whose key the database assigns were written inside `onFlush`,
+before the `INSERT` — so the key did not exist yet and the column was left empty. A creation is now
+recorded once the `INSERT` has produced the key ([architecture.md](architecture.md#the-atomicity-guarantee)),
+but the trail never rewrites a row, so entries from before the upgrade keep their empty `entity_id`. They
+are still in the right aggregate feed with the right label; only a lookup by identifier misses them.
 
 ## Can I turn it off in one environment?
 

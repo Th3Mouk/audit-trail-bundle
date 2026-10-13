@@ -40,7 +40,7 @@ Then run `composer ci` once so you know what green looks like before you change 
 | `src/Attribute/` | The five opt-in attributes | Adding a sixth is a design decision, not a detail — see the philosophy below |
 | `src/Model/` | Immutable value objects: `AuditEntry`, `Actor`, `AuditRef`, `AuditScopeRef` | No behaviour beyond construction and named constructors. Never reachable from Doctrine |
 | `src/Metadata/` | Attribute reading, memoised: `AuditableResolver`, `AuditTypeResolver`, `FieldPolicyResolver`, `FieldPolicy`, plus the `AuditTypeWarmer` build guard | Reflection belongs here and nowhere else |
-| `src/Capture/` | The pipeline and its seams | Everything here runs inside `onFlush`. See the invariant |
+| `src/Capture/` | The pipeline and its seams | Everything here runs inside `onFlush` — or inside `postPersist` for a creation whose key the database assigns. See the invariant |
 | `src/Capture/Value/` | The value-serializer chain | Priority order is load-bearing: entity reference must outrank `Stringable` |
 | `src/Capture/Gate/` | Capture vetoes | All gates must agree. A gate says *whether*, never *what* |
 | `src/Actor/` | Who did it | Knows nothing about users. See the philosophy |
@@ -112,6 +112,16 @@ statement re-fires with the *previous* row's parameters — surfacing as a prima
 looks like a UUID collision and is not. This is why `DoctrineAuditStorage` and `FlushState` exist,
 and why a `FlushState` mark only lasts for the callback that made it: any listener that records
 during a flush must mark it itself.
+
+**A row persisted after the INSERTs is never written, and a clone is not what its id says.**
+`UnitOfWork::commit()` decides what it inserts before the transaction opens; `postPersist` is
+dispatched after the INSERTs (ORM 3.7: after *all* of them, not per class). An `AuditLog`
+persisted from there, with or without a change set, stays in memory while the transaction commits
+without it. The create entry of an `IDENTITY`-keyed entity is therefore built in `postPersist` and
+inserted by `DoctrineAuditStorage` through the connection — never persisted, never patched with an
+`UPDATE` (a deployment may have revoked it). And an entity scheduled for insertion has no key whatever
+its id property holds: `clone` copies the source's, Doctrine ignores it on insert, and reading it files
+the clone under the original. `EntityIdResolver::isPending()` is the one place that knows.
 
 **Doctrine listener priority: higher runs earlier.** Gedmo's own listeners land on `0`. A listener
 that must read the change set *before* Gedmo rewrites it therefore needs a priority **above** `0` —

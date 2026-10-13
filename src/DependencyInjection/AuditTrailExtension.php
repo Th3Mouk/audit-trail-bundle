@@ -161,7 +161,8 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     {
         $container->getDefinition(AuditLogListener::class)
             ->clearTag('doctrine.event_listener')
-            ->addTag('doctrine.event_listener', ['event' => Events::onFlush, 'priority' => $priority]);
+            ->addTag('doctrine.event_listener', ['event' => Events::onFlush, 'priority' => $priority])
+            ->addTag('doctrine.event_listener', ['event' => Events::postPersist]);
     }
 
     /**

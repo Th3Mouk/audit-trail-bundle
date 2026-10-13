@@ -56,17 +56,7 @@ final class CreateCaptureTest extends IntegrationTestCase
         $this->assertFieldRecorded($entry, 'name', 'Ada Lovelace');
     }
 
-    /**
-     * The known cost of capturing inside the flush, pinned so it cannot ship unnoticed.
-     *
-     * `onFlush` runs before the INSERT, so an entity whose key the database assigns has no
-     * identifier yet — and the audit row is computed in that same moment in order to share the
-     * transaction. The two guarantees are in tension: the entry is atomic, and it cannot name
-     * the row it describes. Updates and deletions are unaffected, and an entity keyed by the
-     * application is unaffected, so the trail is still navigable; only the very first entry of
-     * a database-keyed entity has to be found by class and label instead of by identifier.
-     */
-    public function testACreateEntryCannotYetNameAnEntityWhoseKeyTheDatabaseAssigns(): void
+    public function testACreateEntryNamesAnEntityWhoseKeyTheDatabaseAssigns(): void
     {
         $post = new Post('Analytical Engine');
 
@@ -74,9 +64,8 @@ final class CreateCaptureTest extends IntegrationTestCase
 
         self::assertNotNull($post->getId(), 'The database did assign a key.');
 
-        $entry = $this->assertOneEntry(AuditAction::Create, Post::class);
+        $entry = $this->assertOneEntry(AuditAction::Create, Post::class, entityId: (string) $post->getId());
 
-        self::assertSame('', $entry->entityId);
         $this->assertLabelIs($entry, 'Analytical Engine');
     }
 

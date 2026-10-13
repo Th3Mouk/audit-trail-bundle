@@ -22,6 +22,13 @@ use Th3Mouk\AuditTrail\Model\AuditEntry;
  * previous row left bound — the same primary key, twice. Hence `FlushState`, and hence the
  * duty of every listener that records inside a flush to say so.
  *
+ * A row recorded after the unit of work has finished inserting — see
+ * {@see FlushState::isAfterInserts()} — cannot join it at all: the unit of work will not look at
+ * another row, and one persisted then would stay unwritten while the transaction commits.
+ * It is inserted directly instead, through the connection the flush is using, with the columns,
+ * names and types the mapping gives the entity. The row is written once, in its final form, and
+ * never updated: the trail stays insert-only.
+ *
  * This service never flushes. Flushing from inside a flush is how Doctrine listeners
  * produce corrupted units of work, and flushing from outside one would decide on the
  * caller's behalf when their transaction ends.
@@ -38,6 +45,12 @@ final readonly class DoctrineAuditStorage implements AuditStorageInterface
     {
         $log = AuditLog::fromEntry($entry);
 
+        if ($this->flushState->isAfterInserts()) {
+            $this->insert($log);
+
+            return;
+        }
+
         $this->entityManager->persist($log);
 
         if (!$this->flushState->isFlushing()) {
@@ -48,5 +61,26 @@ final readonly class DoctrineAuditStorage implements AuditStorageInterface
             $this->entityManager->getClassMetadata(AuditLog::class),
             $log,
         );
+    }
+
+    private function insert(AuditLog $log): void
+    {
+        $metadata = $this->entityManager->getClassMetadata(AuditLog::class);
+        $connection = $this->entityManager->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $quoteStrategy = $this->entityManager->getConfiguration()->getQuoteStrategy();
+
+        $values = [];
+        $types = [];
+
+        foreach ($metadata->fieldMappings as $field => $mapping) {
+            $column = $quoteStrategy->getColumnName($field, $metadata, $platform);
+            $value = $metadata->getFieldValue($log, $field);
+
+            $values[$column] = $value instanceof \BackedEnum ? $value->value : $value;
+            $types[$column] = $mapping->type;
+        }
+
+        $connection->insert($quoteStrategy->getTableName($metadata, $platform), $values, $types);
     }
 }

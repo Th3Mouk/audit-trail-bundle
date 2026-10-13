@@ -342,6 +342,13 @@ The default `DoctrineAuditStorage` persists the entry and — when it is called 
 computes its change set so the row joins the **very transaction** that produced the change. A
 rolled-back change takes its audit entry with it.
 
+`store()` is called at one of two moments of a flush: during `onFlush`, for nearly every entry, and
+after the `INSERT`, inside the same transaction, for the creation of an entity whose key the database
+assigns — the key does not exist earlier. A decorator behaves the same at both and needs to know
+nothing about it. An implementation that writes through the unit of work does: the unit of work has
+finished inserting by the second moment and will never look at a row persisted then, so it must check
+`FlushState::isAfterInserts()` and insert directly, the way `DoctrineAuditStorage` does.
+
 **Replacing storage trades that away.** A queue, a log shipper, an HTTP sink or a second database
 cannot be in your transaction, so you inherit two failure modes the default does not have: a change
 that commits without its entry, and an entry that describes a change that rolled back. Both are
