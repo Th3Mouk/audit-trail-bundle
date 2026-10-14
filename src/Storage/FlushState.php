@@ -7,7 +7,7 @@ namespace Th3Mouk\AuditTrail\Storage;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
- * Tells the storage whether it is writing inside a flush or outside one.
+ * Tells the storage where in a flush it is writing, or that it is writing outside one.
  *
  * Doctrine offers no public way to ask "am I mid-flush?", and guessing from internals is
  * the kind of cleverness that breaks on a minor upgrade. So the capture listener simply
@@ -20,6 +20,13 @@ use Symfony\Contracts\Service\ResetInterface;
  * doing the same. Recording unmarked is not a lost row but a wrong one; `DoctrineAuditStorage`
  * says why.
  *
+ * A flush has two moments a row can be recorded in, and they are written differently. In
+ * `onFlush` the unit of work has not decided what to insert yet, so a row joins it — persisted,
+ * with a change set. Once its INSERTs are done — `postPersist` — it never looks at a new row again:
+ * one persisted then would stay in the unit of work, unwritten, and the transaction would commit
+ * without it. A row recorded then is written by the one recording it, inside the transaction that
+ * is still open. The listener that records in either moment says which.
+ *
  * The depth counter is what makes that composable, and it is needed anyway because a flush
  * can nest — a listener that flushes another entity manager, or a handler flushing inside a
  * flush event. Leaving the inner flush must not convince the storage that the outer one is
@@ -28,6 +35,8 @@ use Symfony\Contracts\Service\ResetInterface;
 final class FlushState implements ResetInterface
 {
     private int $depth = 0;
+
+    private int $afterInsertsDepth = 0;
 
     public function enterFlush(): void
     {
@@ -44,8 +53,24 @@ final class FlushState implements ResetInterface
         return $this->depth > 0;
     }
 
+    public function enterAfterInserts(): void
+    {
+        ++$this->afterInsertsDepth;
+    }
+
+    public function leaveAfterInserts(): void
+    {
+        $this->afterInsertsDepth = max(0, $this->afterInsertsDepth - 1);
+    }
+
+    public function isAfterInserts(): bool
+    {
+        return $this->afterInsertsDepth > 0;
+    }
+
     public function reset(): void
     {
         $this->depth = 0;
+        $this->afterInsertsDepth = 0;
     }
 }

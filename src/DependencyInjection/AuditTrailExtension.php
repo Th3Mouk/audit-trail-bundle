@@ -87,7 +87,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
             $this->auditFeedSecurity($config['bridges']['api_platform'], $apiPlatformEnabled),
         );
 
-        $loader = new PhpFileLoader($container, new FileLocator(\dirname(__DIR__).'/Resources/config'));
+        $loader = new PhpFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'));
         $loader->load('services.php');
 
         $this->applyListenerPriority($container, $config['listener_priority']);
@@ -146,7 +146,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
                             self::MAPPING_NAME => [
                                 'type' => 'attribute',
                                 'is_bundle' => false,
-                                'dir' => \dirname(__DIR__).'/Entity',
+                                'dir' => __DIR__.'/../Entity',
                                 'prefix' => self::ENTITY_NAMESPACE,
                                 'alias' => self::MAPPING_NAME,
                             ],
@@ -161,7 +161,8 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     {
         $container->getDefinition(AuditLogListener::class)
             ->clearTag('doctrine.event_listener')
-            ->addTag('doctrine.event_listener', ['event' => Events::onFlush, 'priority' => $priority]);
+            ->addTag('doctrine.event_listener', ['event' => Events::onFlush, 'priority' => $priority])
+            ->addTag('doctrine.event_listener', ['event' => Events::postPersist]);
     }
 
     /**

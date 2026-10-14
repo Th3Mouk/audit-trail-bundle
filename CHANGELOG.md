@@ -11,6 +11,33 @@ configuration schema, the service tags, the public service aliases, and the shap
 
 ## [Unreleased]
 
+### Fixed
+
+- A `create` entry now names the entity it describes when the database assigns the key. `onFlush`
+  runs before the `INSERT`, so the key did not exist and `entity_id` was written empty — for every
+  creation of an `IDENTITY`-keyed entity. `onFlush` now only decides that such a creation is captured;
+  `AuditLogListener::postPersist()`, still inside the flush's transaction, builds the entry from the
+  entity as inserted and `DoctrineAuditStorage` inserts it directly. The row is written once and never
+  updated, so a rolled-back flush still takes its entry with it and `UPDATE` can still be revoked on the
+  table. The initial state carries the real key, and references to — and the root of — entities created
+  in the same flush are no longer lost.
+- `EntityIdResolver` no longer reads the identifier property of an entity still waiting for its
+  `INSERT`. Doctrine ignores that property on insert and `clone` copies it from the source, so a cloned
+  entity used to be recorded under its source's key — its `create` entry on the source's history, and
+  every reference to it and root derived from it likewise. Such an entity now has no key until it has
+  been inserted.
+
+### Changed
+
+- `AuditStorageInterface::store()` is now also called after the `INSERT`, inside the flush's
+  transaction, for the creation of an entity whose key the database assigns. Decorators are unaffected;
+  a replacement that persists into the unit of work must check the new `FlushState::isAfterInserts()` and
+  insert directly, because the unit of work no longer picks up a row persisted then.
+- A creation of such an entity is written by a statement of its own rather than through the unit of
+  work's per-class batch, and its initial state is read after the `INSERT` — so a value the database or
+  Doctrine fills in on insert (a generated column, a version) is part of it.
+- Entries recorded by earlier versions keep their empty `entity_id`; the trail never rewrites a row.
+
 ## [0.1.1] - 2026-09-02
 
 ### Fixed

@@ -4,7 +4,8 @@ For contributors, and for anyone deciding whether to trust this thing.
 
 ## The capture pipeline, end to end
 
-One Doctrine hook: **`onFlush`**. That is the whole entry point.
+One Doctrine hook, **`onFlush`**, is the entry point. A second, **`postPersist`**, finishes the one
+case `onFlush` cannot: the creation of an entity whose key the database assigns.
 
 ```
 Doctrine flush
@@ -20,6 +21,8 @@ Doctrine flush
        │    │                                            no opinion ⇒ Update  (a logical delete ⇒ Delete)
        │    ├─ ChainCaptureGate::shouldCapture()          every gate must agree (EnabledGate, CascadeSuppressionGate, yours),
        │    │                                            asked about the RESOLVED action
+       │    ├─ INSERT of an entity whose key the database assigns ─▶ PendingCreations::defer(), entry built
+       │    │                                            after the INSERT — see "Creations" below
        │    ├─ payload
        │    │    ├─ UPDATE : UnitOfWork::getEntityChangeSet()
        │    │    │             ├─ minus ChainFieldExclusion::excludedFields()   fields diverted elsewhere (Gedmo Translatable)
@@ -77,6 +80,18 @@ The holder implements `ResetInterface`, but the bundle registers it — like `Fl
 long-running worker. Set it yourself at the start of a message, or tag the service in your
 application.
 
+### Creations of database-keyed entities
+
+```
+Doctrine commit → INSERTs done
+  └─ AuditLogListener::postPersist()                   once per inserted entity, inside the transaction
+       ├─ PendingCreations::release(entity)             nothing deferred for it ⇒ return
+       ├─ buildEntry()                                  its key, its references, its root — all exist now
+       └─ AuditStorageInterface::store()                FlushState::enterAfterInserts()
+            └─ DoctrineAuditStorage
+                 └─ Connection::insert()                the flush's own connection, so the flush's transaction
+```
+
 ## The atomicity guarantee
 
 The audit row is written **inside the transaction that writes the change**. A rolled-back change takes
@@ -92,12 +107,30 @@ The bundle's `AtomicityTest` asserts both directions, and asserts *inside* the t
 rows really were written first — otherwise "nothing is there afterwards" would also pass if capture had
 simply never run.
 
-**The one price paid for it.** `onFlush` runs before the `INSERT`, so an entity whose key the database
-assigns has no identifier yet. Its `create` entry therefore carries an empty `entity_id` — right class,
-right label, right root, full initial state, but not findable by identifier. Updates and deletions are
-unaffected; entities keyed by the application (UUID in the constructor) are unaffected. The tension is
-real and the trade is made explicitly in favour of atomicity. Assign your own identifiers and it
-disappears — which is also what makes [Gedmo translations](bridges/gedmo.md) fully covered.
+**Creations of entities whose key the database assigns.** `onFlush` runs before the `INSERT`, so such an
+entity has no identifier yet — and neither does anything that names it: a reference to it, the root of a
+child created beside it. So `onFlush` only decides that the creation is captured and parks it in
+`PendingCreations`; `postPersist`, which Doctrine dispatches inside the same transaction once the INSERTs
+are done, builds the entry — same state, same label, same root, now with real identifiers — and has the
+storage write it. A rolled-back flush takes it with it, exactly like the others.
+
+Two alternatives were weighed and rejected:
+
+- **Persisting the row in `onFlush` and patching it afterwards.** The row is inserted by the same commit,
+  before or after the entity's depending on an order that is Doctrine's, and in recent ORM 3 versions
+  `postPersist` is only dispatched once every INSERT is done — so the patch is an `UPDATE`. The trail is
+  insert-only on purpose, and [a deployment may have revoked `UPDATE` on it](extending.md#storage).
+- **Persisting the row from `postPersist`.** The unit of work is done inserting by then and never looks at
+  another row: it would stay in memory while the transaction committed without it.
+
+That is why `DoctrineAuditStorage` inserts such a row itself, through the connection the flush is using,
+once and in its final form — `FlushState` is how it knows which moment it is being called in. The same
+trick is Gedmo's own for the translations it writes without the unit of work.
+
+An entity's key is *pending* from the moment it is scheduled for insertion until its INSERT has run, and
+in that window nothing reads the identifier property: Doctrine ignores it on insert, and `clone` copies it
+from the source. An update or a deletion built in `onFlush` that references a pending entity records no
+reference rather than the source's.
 
 ## The two hard invariants
 

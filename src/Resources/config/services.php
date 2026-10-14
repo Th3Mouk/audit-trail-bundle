@@ -22,6 +22,7 @@ use Th3Mouk\AuditTrail\Capture\Gate\CascadeSuppressionGate;
 use Th3Mouk\AuditTrail\Capture\Gate\ChainCaptureGate;
 use Th3Mouk\AuditTrail\Capture\Gate\EnabledGate;
 use Th3Mouk\AuditTrail\Capture\LabelResolverInterface;
+use Th3Mouk\AuditTrail\Capture\PendingCreations;
 use Th3Mouk\AuditTrail\Capture\ScopeResolverInterface;
 use Th3Mouk\AuditTrail\Capture\Value\ChainValueSerializer;
 use Th3Mouk\AuditTrail\Capture\Value\DateTimeValueSerializer;
@@ -110,6 +111,9 @@ return static function (ContainerConfigurator $container): void {
     $services->set(FlushState::class)
         ->tag('kernel.reset', ['method' => 'reset']);
 
+    $services->set(PendingCreations::class)
+        ->tag('kernel.reset', ['method' => 'reset']);
+
     $services->set(DoctrineAuditStorage::class);
 
     $services->set(AuditLogger::class)
@@ -121,7 +125,8 @@ return static function (ContainerConfigurator $container): void {
     $services->set(AuditLogListener::class)
         ->arg('$stateOnCreate', param('audit_trail.capture.state_on_create'))
         ->arg('$stateOnDelete', param('audit_trail.capture.state_on_delete'))
-        ->tag('doctrine.event_listener', ['event' => Events::onFlush]);
+        ->tag('doctrine.event_listener', ['event' => Events::onFlush])
+        ->tag('doctrine.event_listener', ['event' => Events::postPersist]);
 
     $services->set(TableNameListener::class)
         ->arg('$tableName', param('audit_trail.table_name'))
