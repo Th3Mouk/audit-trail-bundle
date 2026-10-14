@@ -11,6 +11,8 @@ configuration schema, the service tags, the public service aliases, and the shap
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-14
+
 ### Fixed
 
 - A `create` entry now names the entity it describes when the database assigns the key. `onFlush`
@@ -193,6 +195,7 @@ configuration schema, the service tags, the public service aliases, and the shap
 - The trail is soft append-only by default. Making it hard append-only is an infrastructure
   decision; see [SECURITY.md](SECURITY.md) for the `REVOKE`/`GRANT` that does it.
 
-[Unreleased]: https://github.com/th3mouk/audit-trail-bundle/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/th3mouk/audit-trail-bundle/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/th3mouk/audit-trail-bundle/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/th3mouk/audit-trail-bundle/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/th3mouk/audit-trail-bundle/releases/tag/v0.1.0
